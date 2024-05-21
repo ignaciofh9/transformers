@@ -61,6 +61,25 @@ logger = logging.get_logger(__name__)
 _CONFIG_FOR_DOC = "LlamaConfig"
 
 
+######################### OUR CODE #############################
+def zero_out_above_threshold(tensor, threshold, sum_dim=-1):
+    device = tensor.device
+    sorted_tensor, sorted_indices = torch.sort(tensor, descending=True, dim=sum_dim)
+    cumulative_sum = torch.cumsum(sorted_tensor, dim=sum_dim)
+    zero_tensor = torch.zeros_like(cumulative_sum[..., :1]).to(device)
+    lagged_cumulative_sum = torch.cat((zero_tensor, cumulative_sum[..., :-1]), dim=sum_dim)
+    not_threshold_sorted = lagged_cumulative_sum < threshold
+    not_threshold_unsorted = torch.zeros(tensor.shape, dtype=torch.bool).to(device)
+    not_threshold_unsorted.scatter_(sum_dim, sorted_indices, not_threshold_sorted)
+    masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0).to(device))
+    return masked_tensor
+
+def normalize_sum_to_one(tensor, dim=-1):
+    sum_along_dim = torch.sum(tensor, dim=dim, keepdim=True)
+    return tensor / (sum_along_dim + 1e-8)
+###################################################################
+
+
 def _get_unpad_data(attention_mask):
     seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
@@ -351,6 +370,14 @@ class LlamaAttention(nn.Module):
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+
+        # Our stuff
+        if self.config.total_attetion_threshold:
+          attn_weights = zero_out_above_threshold(attn_weights, self.config.total_attetion_threshold)
+          attn_weights = normalize_sum_to_one(attn_weights)
+        # print(attn_weights.shape)
+        # print(f"dimension along which weights sum to one: {check_sum_to_one(attn_weights)}")
+        
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
 
