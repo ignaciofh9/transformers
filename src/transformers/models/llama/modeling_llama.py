@@ -369,12 +369,12 @@ class LlamaAttention(nn.Module):
             attn_weights = attn_weights + causal_mask
 
         # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32)
 
         # Our stuff
         if self.config.total_attetion_threshold:
           attn_weights = zero_out_above_threshold(attn_weights, self.config.total_attetion_threshold)
-          attn_weights = normalize_sum_to_one(attn_weights)
+          attn_weights = normalize_sum_to_one(attn_weights).to(query_states.dtype)
         # print(attn_weights.shape)
         # print(f"dimension along which weights sum to one: {check_sum_to_one(attn_weights)}")
         
