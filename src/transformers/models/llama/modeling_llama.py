@@ -63,13 +63,7 @@ _CONFIG_FOR_DOC = "LlamaConfig"
 
 ######################### OUR STUFF #############################
 def zero_out_above_threshold(tensor, threshold, sum_dim=-1):
-    # Move the tensor to the CPU for sorting
-    tensor_cpu = tensor.cpu()
-    sorted_tensor_cpu, sorted_indices_cpu = torch.sort(tensor_cpu, descending=True, dim=sum_dim)
-
-    # Move the sorted results back to the GPU
-    sorted_tensor = sorted_tensor_cpu.to(tensor.device)
-    sorted_indices = sorted_indices_cpu.to(tensor.device)
+    sorted_tensor, sorted_indices = torch.sort(tensor, descending=True, dim=sum_dim)
 
     cumulative_sum = torch.cumsum(sorted_tensor, dim=sum_dim)
 
@@ -78,10 +72,10 @@ def zero_out_above_threshold(tensor, threshold, sum_dim=-1):
 
     not_threshold_sorted = lagged_cumulative_sum < threshold
 
-    not_threshold_unsorted = torch.zeros(tensor.shape, dtype=torch.bool, device=tensor.device)
+    not_threshold_unsorted = torch.zeros(tensor.shape, dtype=torch.bool)
     not_threshold_unsorted.scatter_(sum_dim, sorted_indices, not_threshold_sorted)
 
-    masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0, device=tensor.device))
+    masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0))
 
     return masked_tensor
 
@@ -409,7 +403,7 @@ class LlamaAttention(nn.Module):
         else:
             attn_output = self.o_proj(attn_output)
 
-        if not output_attentions:
+        if True: # not output_attentions:
             attn_weights = None
 
         return attn_output, attn_weights, past_key_value
