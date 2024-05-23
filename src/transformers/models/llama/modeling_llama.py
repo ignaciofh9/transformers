@@ -62,7 +62,7 @@ _CONFIG_FOR_DOC = "LlamaConfig"
 
 
 ######################### OUR STUFF #############################
-def zero_out_above_threshold(tensor, threshold, sum_dim):
+def zero_out_above_threshold(tensor, threshold, sum_dim=-1):
     # Move the tensor to the CPU for sorting
     tensor_cpu = tensor.cpu()
     sorted_tensor_cpu, sorted_indices_cpu = torch.sort(tensor_cpu, descending=True, dim=sum_dim)
