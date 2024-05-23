@@ -63,20 +63,15 @@ _CONFIG_FOR_DOC = "LlamaConfig"
 
 ######################### OUR STUFF #############################
 def zero_out_above_threshold(tensor, threshold, sum_dim=-1):
+    device = tensor.device
     sorted_tensor, sorted_indices = torch.sort(tensor, descending=True, dim=sum_dim)
-
     cumulative_sum = torch.cumsum(sorted_tensor, dim=sum_dim)
-
-    zero_tensor = torch.zeros_like(cumulative_sum[..., :1])
+    zero_tensor = torch.zeros_like(cumulative_sum[..., :1]).to(device)
     lagged_cumulative_sum = torch.cat((zero_tensor, cumulative_sum[..., :-1]), dim=sum_dim)
-
     not_threshold_sorted = lagged_cumulative_sum < threshold
-
-    not_threshold_unsorted = torch.zeros(tensor.shape, dtype=torch.bool)
+    not_threshold_unsorted = torch.zeros(tensor.shape, dtype=torch.bool).to(device)
     not_threshold_unsorted.scatter_(sum_dim, sorted_indices, not_threshold_sorted)
-
-    masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0))
-
+    masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0).to(device))
     return masked_tensor
 
 def normalize_sum_to_one(tensor, dim=-1):
