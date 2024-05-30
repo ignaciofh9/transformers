@@ -64,27 +64,25 @@ _CONFIG_FOR_DOC = "LlamaConfig"
 ######################### OUR STUFF #############################
 def zero_out_above_threshold(tensor, threshold, ignore_mask=None, sum_dim=-1):
     device = tensor.device
-    sorted_tensor, sorted_indices = torch.sort(tensor, descending=True, dim=sum_dim)
     
     if ignore_mask is not None:
         ignore_mask = ignore_mask.bool()
-        ignore_mask = ignore_mask.view(*ignore_mask.shape, *[1] * (tensor.ndim - ignore_mask.ndim))
-        ignore_mask = ignore_mask.expand(*tensor.shape)
-        ignore_mask_sorted = torch.gather(ignore_mask, sum_dim, sorted_indices)
-        sorted_tensor = torch.where(ignore_mask_sorted, sorted_tensor, torch.tensor(0.0).to(device))
-        sorted_tensor = normalize_sum_to_one(sorted_tensor)
+        used_tensor = torch.where(ignore_mask, torch.tensor(0.0).to(device), tensor)
+
+    sorted_tensor, sorted_indices = torch.sort(used_tensor, descending=True, dim=sum_dim)
+
+    if ignore_mask is not None:
+        sorted_tensor = normalize_sum_to_one(sorted_tensor, sum_dim)
     
     cumulative_sum = torch.cumsum(sorted_tensor, dim=sum_dim)
     zero_tensor = torch.zeros_like(cumulative_sum[..., :1]).to(device)
     lagged_cumulative_sum = torch.cat((zero_tensor, cumulative_sum[..., :-1]), dim=sum_dim)
-    
     not_threshold_sorted = lagged_cumulative_sum < threshold
-    
-    if ignore_mask is not None:
-        not_threshold_sorted = torch.where(ignore_mask_sorted, torch.tensor(True).to(device), not_threshold_sorted)
-    
-    not_threshold_unsorted = torch.zeros(tensor.shape, dtype=torch.bool).to(device)
+    not_threshold_unsorted = torch.zeros(used_tensor.shape, dtype=torch.bool).to(device)
     not_threshold_unsorted.scatter_(sum_dim, sorted_indices, not_threshold_sorted)
+
+    if ignore_mask is not None:
+        not_threshold_unsorted = torch.where(ignore_mask, torch.tensor(True).to(device), not_threshold_unsorted)
     
     masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0).to(device))
     return masked_tensor
