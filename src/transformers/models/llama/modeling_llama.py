@@ -62,15 +62,28 @@ _CONFIG_FOR_DOC = "LlamaConfig"
 
 
 ######################### OUR STUFF #############################
-def zero_out_above_threshold(tensor, threshold, sum_dim=-1):
+def zero_out_above_threshold(tensor, threshold, ignore_mask=None, sum_dim=-1):
     device = tensor.device
     sorted_tensor, sorted_indices = torch.sort(tensor, descending=True, dim=sum_dim)
+    
+    if ignore_mask is not None:
+        ignore_mask = ignore_mask.bool()
+        ignore_mask_sorted = torch.gather(ignore_mask, sum_dim, sorted_indices)
+        sorted_tensor = torch.where(ignore_mask_sorted, sorted_tensor, torch.tensor(0.0).to(device))
+        sorted_tensor = normalize_sum_to_one(sorted_tensor)
+    
     cumulative_sum = torch.cumsum(sorted_tensor, dim=sum_dim)
     zero_tensor = torch.zeros_like(cumulative_sum[..., :1]).to(device)
     lagged_cumulative_sum = torch.cat((zero_tensor, cumulative_sum[..., :-1]), dim=sum_dim)
+    
     not_threshold_sorted = lagged_cumulative_sum < threshold
+    
+    if ignore_mask is not None:
+        not_threshold_sorted = torch.where(ignore_mask_sorted, torch.tensor(True).to(device), not_threshold_sorted)
+    
     not_threshold_unsorted = torch.zeros(tensor.shape, dtype=torch.bool).to(device)
     not_threshold_unsorted.scatter_(sum_dim, sorted_indices, not_threshold_sorted)
+    
     masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0).to(device))
     return masked_tensor
 
@@ -372,12 +385,18 @@ class LlamaAttention(nn.Module):
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32)
 
         # Our stuff
-        if self.config.total_attetion_threshold:
-          attn_weights = zero_out_above_threshold(attn_weights, self.config.total_attetion_threshold)
-          attn_weights = normalize_sum_to_one(attn_weights).to(query_states.dtype)
-        # print(attn_weights.shape)
-        # print(f"dimension along which weights sum to one: {check_sum_to_one(attn_weights)}")
+        if self.config.total_attention_threshold and self.config.total_attention_threshold != 1.0:
+            prompt_mask = self.config.prompt_mask if self.config.prompt_mask else None
+            
+            # extend with zeros to match last dimension of attn_weights
+            if prompt_mask is not None:
+                prompt_mask = torch.cat((prompt_mask, torch.zeros(attn_weights.shape[-1] - prompt_mask.shape[-1], dtype=prompt_mask.dtype).to(prompt_mask.device)), dim=-1)
+            
+            attn_weights = zero_out_above_threshold(attn_weights, self.config.total_attention_threshold, prompt_mask)
+            attn_weights = normalize_sum_to_one(attn_weights).to(query_states.dtype)
         
+        num_nonzero_weights = torch.count_nonzero(attn_weights, dim=-1)
+
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
 
@@ -401,7 +420,14 @@ class LlamaAttention(nn.Module):
         if True: # not output_attentions:
             attn_weights = None
 
-        return attn_output, attn_weights, past_key_value
+        attention_info = {
+            'context_length': key_states.shape[-2],
+            'num_attended': num_nonzero_weights,
+            'num_in_prompt': torch.sum(prompt_mask) if prompt_mask is not None else None
+        }
+        print(attention_info)
+        
+        return attn_output, attention_info, past_key_value
 
 
 class LlamaFlashAttention2(LlamaAttention):
@@ -1053,7 +1079,8 @@ class LlamaModel(LlamaPreTrainedModel):
         using_static_cache = isinstance(past_key_values, StaticCache)
 
         # When output attentions is True, sdpa implementation's forward method calls the eager implementation's forward
-        if self.config._attn_implementation == "sdpa" and not using_static_cache and not output_attentions:
+        # NOTE: We will always use eager for this project
+        if False: # self.config._attn_implementation == "sdpa" and not using_static_cache and not output_attentions:
             if AttentionMaskConverter._ignore_causal_mask_sdpa(
                 attention_mask,
                 inputs_embeds=input_tensor,
