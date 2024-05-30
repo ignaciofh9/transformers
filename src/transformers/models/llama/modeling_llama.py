@@ -68,6 +68,8 @@ def zero_out_above_threshold(tensor, threshold, ignore_mask=None, sum_dim=-1):
     
     if ignore_mask is not None:
         ignore_mask = ignore_mask.bool()
+        ignore_mask = ignore_mask.view(*ignore_mask.shape, *[1] * (tensor.ndim - ignore_mask.ndim))
+        ignore_mask = ignore_mask.expand(*tensor.shape)
         ignore_mask_sorted = torch.gather(ignore_mask, sum_dim, sorted_indices)
         sorted_tensor = torch.where(ignore_mask_sorted, sorted_tensor, torch.tensor(0.0).to(device))
         sorted_tensor = normalize_sum_to_one(sorted_tensor)
