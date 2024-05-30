@@ -386,7 +386,7 @@ class LlamaAttention(nn.Module):
 
         # Our stuff
         if self.config.total_attention_threshold and self.config.total_attention_threshold != 1.0:
-            prompt_mask = self.config.prompt_mask if self.config.prompt_mask else None
+            prompt_mask = self.config.prompt_mask
             
             # extend with zeros to match last dimension of attn_weights
             if prompt_mask is not None:
@@ -426,7 +426,7 @@ class LlamaAttention(nn.Module):
             'num_in_prompt': torch.sum(prompt_mask) if prompt_mask is not None else None
         }
         print(attention_info)
-        
+
         return attn_output, attention_info, past_key_value
 
 
