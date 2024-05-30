@@ -387,15 +387,18 @@ class LlamaAttention(nn.Module):
         # Our stuff
         if self.config.total_attention_threshold and self.config.total_attention_threshold != 1.0:
             prompt_mask = self.config.prompt_mask
-            
+            if prompt_mask is not None and isinstance(prompt_mask, torch.Tensor):
+                prompt_mask = prompt_mask.to(torch.bool)
+
             # extend with zeros to match last dimension of attn_weights
             if prompt_mask is not None:
                 prompt_mask = torch.cat((prompt_mask, torch.zeros(attn_weights.shape[-1] - prompt_mask.shape[-1], dtype=prompt_mask.dtype).to(prompt_mask.device)), dim=-1)
             
             attn_weights = zero_out_above_threshold(attn_weights, self.config.total_attention_threshold, prompt_mask)
-            attn_weights = normalize_sum_to_one(attn_weights).to(query_states.dtype)
+            attn_weights = normalize_sum_to_one(attn_weights)
         
         num_nonzero_weights = torch.count_nonzero(attn_weights, dim=-1)
+        attn_weights = attn_weights.to(query_states.dtype)
 
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
