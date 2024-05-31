@@ -384,12 +384,12 @@ class LlamaAttention(nn.Module):
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32)
 
+        prompt_mask = self.config.prompt_mask
+        if prompt_mask is not None and isinstance(prompt_mask, torch.Tensor):
+            prompt_mask = prompt_mask.to(torch.bool)
+            
         # Our stuff
         if self.config.total_attention_threshold and self.config.total_attention_threshold != 1.0:
-            prompt_mask = self.config.prompt_mask
-            if prompt_mask is not None and isinstance(prompt_mask, torch.Tensor):
-                prompt_mask = prompt_mask.to(torch.bool)
-
             # extend with zeros to match last dimension of attn_weights
             if prompt_mask is not None:
                 prompt_mask = torch.cat((prompt_mask, torch.zeros(attn_weights.shape[-1] - prompt_mask.shape[-1], dtype=prompt_mask.dtype).to(prompt_mask.device)), dim=-1)
@@ -423,14 +423,7 @@ class LlamaAttention(nn.Module):
         if True: # not output_attentions:
             attn_weights = None
 
-        attention_info = {
-            'context_length': key_states.shape[-2],
-            'num_attended': num_nonzero_weights,
-            'num_in_prompt': torch.sum(prompt_mask) if prompt_mask is not None else None
-        }
-        print(attention_info)
-
-        return attn_output, attention_info, past_key_value
+        return attn_output, num_nonzero_weights[0, :, -1], past_key_value
 
 
 class LlamaFlashAttention2(LlamaAttention):
