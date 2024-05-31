@@ -2415,6 +2415,8 @@ class GenerationMixin:
                         if self.config.is_encoder_decoder
                         else (outputs.hidden_states,)
                     )
+            
+            decoder_attentions = torch.stack([torch.stack(tuples) for tuples in decoder_attentions])
 
             # token selection
             if do_sample:
