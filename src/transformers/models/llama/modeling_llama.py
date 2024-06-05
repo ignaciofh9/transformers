@@ -75,16 +75,23 @@ def zero_out_above_threshold(tensor, threshold, ignore_mask=None, sum_dim=-1):
         sorted_tensor = normalize_sum_to_one(sorted_tensor, sum_dim)
     
     cumulative_sum = torch.cumsum(sorted_tensor, dim=sum_dim)
+    del sorted_tensor
     zero_tensor = torch.zeros_like(cumulative_sum[..., :1]).to(device)
     lagged_cumulative_sum = torch.cat((zero_tensor, cumulative_sum[..., :-1]), dim=sum_dim)
+    
     not_threshold_sorted = lagged_cumulative_sum < threshold
+    del cumulative_sum, zero_tensor, lagged_cumulative_sum  # Freeing up memory
+
     not_threshold_unsorted = torch.zeros(used_tensor.shape, dtype=torch.bool).to(device)
     not_threshold_unsorted.scatter_(sum_dim, sorted_indices, not_threshold_sorted)
+    del sorted_indices, not_threshold_sorted  # Freeing up memory
 
     if ignore_mask is not None:
         not_threshold_unsorted = torch.where(ignore_mask, torch.tensor(True).to(device), not_threshold_unsorted)
     
     masked_tensor = torch.where(not_threshold_unsorted, tensor, torch.tensor(0.0).to(device))
+    del not_threshold_unsorted, used_tensor  # Freeing up memory
+    
     return masked_tensor
 
 def normalize_sum_to_one(tensor, dim=-1):
