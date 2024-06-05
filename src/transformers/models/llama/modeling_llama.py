@@ -398,6 +398,7 @@ class LlamaAttention(nn.Module):
             attn_weights = normalize_sum_to_one(attn_weights)
         
         num_nonzero_weights = torch.count_nonzero(attn_weights, dim=-1)
+        num_nonzero_weights = num_nonzero_weights.cpu()
         attn_weights = attn_weights.to(query_states.dtype)
 
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
