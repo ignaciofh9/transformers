@@ -64,6 +64,7 @@ _CONFIG_FOR_DOC = "LlamaConfig"
 ######################### OUR STUFF #############################
 def zero_out_above_threshold(tensor, threshold, ignore_mask=None, sum_dim=-1):
     device = tensor.device
+    used_tensor = tensor
     
     if ignore_mask is not None:
         ignore_mask = ignore_mask.bool()
