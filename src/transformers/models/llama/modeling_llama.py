@@ -443,6 +443,8 @@ class LlamaAttention(nn.Module):
                 
                 # print(f'Custom Mask shape: {custom_mask.shape}')
                 # print(f'Prompt Mask shape: {prompt_mask.shape}')
+                custom_mask = custom_mask.bool()
+                prompt_mask = prompt_mask.bool()
 
                 # Update custom_mask to be the logical OR of custom_mask and prompt_mask
                 custom_mask = custom_mask | prompt_mask
