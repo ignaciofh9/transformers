@@ -434,6 +434,13 @@ class LlamaAttention(nn.Module):
             fixed = self.config.mask_fixed_num
             square_dilation = self.config.mask_dilation
             custom_mask = build_custom_attention_mask(q_len, k_len, fixed, square_dilation, attn_weights.device)
+            
+            if prompt_mask is not None:
+                prompt_mask = torch.cat((prompt_mask, torch.zeros(attn_weights.shape[-1] - prompt_mask.shape[-1], dtype=prompt_mask.dtype).to(prompt_mask.device)), dim=-1)
+            
+                print(f'Custom Mask shape: {custom_mask.shape}')
+                print(f'Prompt Mask shape: {prompt_mask.shape}')
+            # custom_mask = custom_mask or prompt_mask
             attn_weights = attn_weights * custom_mask.unsqueeze(0).unsqueeze(0)
 
         elif self.config.total_attention_threshold and self.config.total_attention_threshold != 1.0:
