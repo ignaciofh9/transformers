@@ -98,6 +98,37 @@ def zero_out_above_threshold(tensor, threshold, ignore_mask=None, sum_dim=-1):
 def normalize_sum_to_one(tensor, dim=-1):
     sum_along_dim = torch.sum(tensor, dim=dim, keepdim=True)
     return tensor / (sum_along_dim + 1e-8)
+
+def build_custom_attention_mask(q_len: int, k_len: int, fixed: int, square_dilation: int, device: torch.device) -> torch.Tensor:
+    """
+    Build a custom attention mask for decoder-only attention weights, supporting incremental generation.
+
+    Args:
+        q_len (int): Length of the query sequence.
+        k_len (int): Length of the key sequence.
+        fixed (int): Number of fixed positions to always include.
+        square_dilation (int): Dilation rate for the quadratic spacing.
+        device (torch.device): Device to create the mask on.
+
+    Returns:
+        torch.Tensor: Custom attention mask of shape (q_len, k_len).
+    """
+    mask = torch.zeros(q_len, k_len, device=device)
+    
+    for i in range(-1, -q_len-1, -1):
+        for j in range(fixed):
+            mask[i, k_len - j + i] = 1
+        
+        k = 1
+        while True:
+            j = i - fixed - int(k * k * float(square_dilation))
+            if k_len + j >= 0:
+                mask[i, j] = 1
+            else:
+                break
+            k += 1
+
+    return mask
 ###################################################################
 
 
@@ -397,7 +428,15 @@ class LlamaAttention(nn.Module):
             prompt_mask = prompt_mask.to(torch.bool)
             
         # Our stuff
-        if self.config.total_attention_threshold and self.config.total_attention_threshold != 1.0:
+        if self.config.mask_fixed_num and self.config.mask_dilation:
+            _, _, q_len, k_len = attn_weights.shape
+
+            fixed = self.config.mask_fixed_num
+            square_dilation = self.config.mask_dilation
+            custom_mask = build_custom_attention_mask(q_len, k_len, fixed, square_dilation, attn_weights.device)
+            attn_weights = attn_weights * custom_mask.unsqueeze(0).unsqueeze(0)
+
+        elif self.config.total_attention_threshold and self.config.total_attention_threshold != 1.0:
             # extend with zeros to match last dimension of attn_weights
             if prompt_mask is not None:
                 prompt_mask = torch.cat((prompt_mask, torch.zeros(attn_weights.shape[-1] - prompt_mask.shape[-1], dtype=prompt_mask.dtype).to(prompt_mask.device)), dim=-1)
